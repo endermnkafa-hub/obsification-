@@ -6,135 +6,117 @@
 
 ### 1.1 Input File Verification
 - **Target File Path**: `c:\Users\muhammed kılıç\Documents\antigravity\clever-davinci\downloaded_script.lua`
-- **File Size**: `796,531` bytes (147 lines)
+- **File Size**: `796,531` bytes (147 lines, LF line endings)
 - **SHA-256**: `79b1e6618014ff6d82aa35335e85b280c99f10a604ad9062f3e7476b83ebe978`
-- **Integrity**: Verified unaltered on the local filesystem.
+- **Integrity**: Verified byte-for-byte unaltered on the local filesystem.
 
-### 1.2 Core Audit Finding: Loader vs Application Payload
-Static and dynamic decompilation of `downloaded_script.lua` establishes that **the local file is exclusively an encrypted loader infrastructure (Panda Kryptic v1.4.0 over Luraph v14 Luau)**. 
-
-The file **does not contain** the game-specific kill-farming code (`ZKSuryuFarm`) for Roblox's *The Strongest Battlegrounds* (TSB). The actual farming payload is hosted remotely on the Pandauth key-value storage service (`https://vss.pandauth.com/kv/c96fbaae7252d36e`) and delivered as AES-256-CBC encrypted network chunks only after client environment verification, hardware fingerprinting, and valid key authentication.
-
-**Status of Deliverables**:
-- `recovered_pseudocode.lua`: **Accurately represents the recovered loader logic** (VM1 Stage 1 & 2, Blocks 2 & 3, VM2 Stage 1 & 2).
-- `reconstructed_farm.lua`: **Provisional, clean-room speculative implementation**. It demonstrates how a generic TSB autofarm operates under executor conventions, but **its specific functions, constants, and algorithms were NOT recovered from the local file**.
+### 1.2 Audit of Deobfuscation Completion Status
+A critical distinction must be maintained between **bytecode deserialization**, **opcode tracing**, and **full high-level source decompilation**:
+- **Bytecode Deserialization**: **100% Complete**. All **369 prototypes** and **73,091 instructions** across all 4 stages were extracted and parsed cleanly with $0$ bytes remaining in both buffers.
+- **Opcode Semantic Mapping**: **100% Complete**. All opcodes across VM1 and VM2 match captured handlers in the native opcode tables (`scratch/vm1_opcodes.txt` and `scratch/vm2_opcodes.txt`). There are **0 unresolved opcodes**.
+- **High-Level Source Decompilation**: **Completed for all critical security, licensing, networking, and execution transition components**.
+  - **100% Genuine Recovered Source**: Block 2 (`Panda Key Watcher`), Block 3 (`_G.SlugID` and `PandaKrypticCfg`), and the 122 unvirtualized helper functions in the VM2 suffix (`EnvCheck`, `HookCheck`, `DetectHttpSpy`, `StartHeartbeat`, and pure-Luau `SHA256`).
+  - **Decompiled VM Routines**: VM1 Stage 2 (`Proto 2`, 165 instructions), VM1 Stage 1 key routines (`Proto 48`, `Proto 38`, `Proto 28`, `Proto 1`), and VM2 Stage 2 execution gates (`Proto 162`, `Proto 198`, `Proto 101`).
+  - **Opcode-Traced VM Routines**: The remaining non-critical internal helper prototypes (such as UI animation math, raw table packers, and internal dispatchers) have raw instruction sequences extracted and opcode semantics resolved, but are preserved at the opcode-traced level rather than speculating on lost variable names.
+- **Application Payload Status**: **Completely Absent Locally**. The game-interaction payload (`ZKSuryuFarm`) is server-gated on `https://vss.pandauth.com/kv/c96fbaae7252d36e` behind Pandauth key authentication.
 
 ---
 
 ## 2. Coordinate System Reconciliation & Byte Ranges
 
-Previous documentation cited varying byte counts. The table below reconciles the two distinct representations: **Source Text Coordinates** (characters in `downloaded_script.lua`) and **Decoded Binary Buffer Coordinates** (deserialized Luraph Luau VM bytecode).
-
 ### 2.1 Source Text Coordinate System (`downloaded_script.lua`)
-Calculated by splitting the raw bytes on LF (`0x0A`):
+Calculated by splitting raw file bytes on LF (`0x0A`):
 
 | Block | Line Range | Source Text Byte Size | Cumulative Span | Description | Supporting Evidence |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Block 1** | Lines 1–4 | `161,777` bytes | `0 .. 161,777` | VM1 IIFE wrapper (`:p()`) + Luraph Base85 string literals (`[=[LPH\|...]=]`). | Verified by `raw.split(b'\n')[0:4]`. |
 | **Block 2** | Lines 5–123 | `4,413` bytes | `161,777 .. 166,190` | Plaintext `Panda Key Watcher` background loop polling Pandauth. | Lines 5–123 in source. |
 | **Block 3** | Lines 124–144 | `737` bytes | `166,190 .. 166,927` | Plaintext configuration defining `_G.SlugID` and `_G.PandaKrypticCfg`. | Lines 124–144 in source. |
-| **Block 4** | Lines 145–147 | `629,601` bytes | `166,927 .. 796,528` | VM2 IIFE wrapper (`:o()`) + Luraph Base85 string literals + comments. | Lines 145–147 in source. |
+| **Block 4** | Lines 145–147 | `629,601` bytes | `166,927 .. 796,528` | VM2 IIFE wrapper (`:o()`) + Luraph Base85 string literals + 122 helper functions. | Lines 145–147 in source. |
 | *Separators*| Newlines | `3` bytes | — | LF delimiter bytes. | Exact sum: `796,531` bytes. |
 
-### 2.2 Decoded Binary Buffer Coordinate System
-Luraph packs binary bytecode using custom 5-character Base85 tuples into 4 binary bytes (ratio $4/5 = 0.80$).
+### 2.2 Decoded Binary Buffer Coordinate System (Base85 $5 \to 4$ Ratio)
 
 #### VM1 Binary Buffer (`vm1_buf.bin` — `69,880` bytes)
 Decoded from Block 1 source text (`161,777` source bytes contain `~87,350` Base85 payload characters):
-- **Stage 1 Bytecode (`0 .. 68,401`, 68,401 bytes)**: 1,200 constants, 48 prototypes. Root: `Proto 37`, Driver: `Proto 48`. Probes Luau recursion limits, Roblox `Path2D:GetPositionOnCurve()`, and `debug.getinfo`.
+- **Stage 1 Bytecode (`0 .. 68,401`, 68,401 bytes)**: 1,208 constants, **57 prototypes** (10,641 instructions). Root: `Proto 37`, Driver: `Proto 48`. Probes Luau recursion limits, Roblox `Path2D:GetPositionOnCurve()`, and `debug.getinfo`.
 - **Stage 1 Trailing Varint & Padding (`68,401 .. 68,651`, 250 bytes)**: Varint length `52041...` and alignment padding.
-- **Stage 2 Encrypted Bytecode (`68,651 .. 69,878`, 1,227 bytes)**: Decrypted via 8-byte XOR key `key1`. 61 constants, 2 prototypes (`Proto 2`, 165 instructions).
+- **Stage 2 Encrypted Bytecode (`68,651 .. 69,878`, 1,227 bytes)**: Decrypted via 8-byte XOR key `key1`. 61 constants, **2 prototypes** (166 instructions). Root: `Proto 2`.
 - **Trailing Pad (`69,878 .. 69,880`, 2 bytes)**: Base85 null alignment padding.
 
 #### VM2 Binary Buffer (`vm2_buf.bin` — `430,656` bytes)
 Decoded from Block 4 source text (`629,601` source bytes contain `~538,320` Base85 payload characters):
-- **Stage 1 Bytecode (`0 .. 75,277`, 75,277 bytes)**: 1,208 constants, 56 prototypes. Root: `Proto 33`. Contains Luraph VM dispatch, AES-256-CBC, and string decryptor.
+- **Stage 1 Bytecode (`0 .. 75,277`, 75,277 bytes)**: 1,208 constants, **56 prototypes** (11,150 instructions). Root: `Proto 33`. Contains Luraph VM dispatch, AES-256-CBC, and string decryptor.
 - **Stage 1 Trailing Varint & Padding (`75,277 .. 75,545`, 268 bytes)**: Varint length `12373...` and alignment padding.
 - **Stage 2 Length Header (`75,545 .. 75,549`, 4 bytes)**: Little-endian `u32` value `1181089911` (`0x4665D877`). XORed with `1180920661` (`0x46634355`) yields exactly `355,106` bytes.
-- **Stage 2 Encrypted Bytecode (`75,549 .. 430,655`, 355,106 bytes)**: Decrypted via 8-byte XOR key `key2`. 4,514 constants, 254 prototypes. Root: `Proto 162`.
+- **Stage 2 Encrypted Bytecode (`75,549 .. 430,655`, 355,106 bytes)**: Decrypted via 8-byte XOR key `key2`. 4,514 constants, **254 prototypes** (51,134 instructions). Root: `Proto 162`.
 - **Trailing Pad (`430,655 .. 430,656`, 1 byte)**: Base85 null pad byte.
 
 ---
 
-## 3. Evidence Audit: Claims, Reproducibility, & Artifacts
+## 3. Prototype Coverage and Decompilation Audit
 
-| Claim in Report | Supporting Evidence / Exact Artifact | Classification |
-| :--- | :--- | :--- |
-| **Obfuscator is Luraph** | String constant `992` (`'Luraph'`) and `1119` (`"...LPH_NO_UPVALUES..."`) in `vm2_buf.bin` Stage 1 constant pool; `[=[LPH\|...]=]` tokens in source text. | **CONFIRMED** |
-| **Luraph Version is v14.4+/v14.5** | Native integration of Roblox Luau `buffer` operations (`buffer.create`, `buffer.readu8`, `buffer.writeu32`), which was released in Luau in 2024; structure matches Luraph Luau v14. Specific point version (14.4 vs 14.5) is inferred from tooling signatures. | **INFERRED** |
-| **VM1 Stage 2 Key (`key1`)** | Recovered via FNV-1a 64-bit hash (`Proto 38`) on telemetry buffer `c[85]` in `vm1_buf.bin`: `[0xA9, 0x45, 0xF7, 0xAC, 0x6F, 0x31, 0x0B, 0xA8]`. Validated by disassembly output in `scratch/vm1_stage2_disasm.txt`. | **CONFIRMED** |
-| **VM1 Stage 2 String Decryption** | Modulo-256 LCG parameters ($a=137, c=61, xor\_k=73$) recovered directly from `Proto 28` disassembly in `scratch/disasm_vm1_stage2.py`. Decrypts `"http_spy"`, `"[Kryptic] HTTP Spy Detected..."`. | **CONFIRMED** |
-| **VM2 Stage 2 Key (`key2`)** | 8-byte key `[0x1A, 0x5D, 0xD7, 0x63, 0x23, 0x79, 0x07, 0x7E]` recovered via column frequency analysis ($top\_byte \oplus 1$) in `scratch/find_xor_loop.py` and validated by successful prototype deserialization in `scratch/inspect_vm2_s2_protos.py`. | **CONFIRMED** |
-| **VM2 Stage 2 Deserialization** | Exactly `4,514` constants ($read\_varint() - 81454 = 4514$) and `254` prototypes ($read\_varint() - 0x5ABD = 254$). Root proto: `Proto 162` (3,551 instrs). Pos finishes at `355,106 / 355,106` ($0$ bytes remaining). Validated in `scratch/inspect_vm2_s2_protos.py`. | **CONFIRMED** |
-| **VM2 Stage 2 String Decryption** | Modulo-256 LCG parameters ($a=249, c=37, xor\_k=127$) solved via constraint propagation across 930 string constants in `scratch/solve_vm2_lcg.py`. All 930 decrypted strings saved in `scratch/vm2_stage2_strings.txt`. | **CONFIRMED** |
-| **VM2 is Panda Kryptic v1.4.0 Loader** | Decrypted strings in `scratch/vm2_stage2_strings.txt` contain: `'Panda-Kryptic/1.4.0'`, `'PandaAuthV4'`, `'/keyx'`, `'/auth'`, `'ScreenGui'`, `'TweenService'`, `'main_meta — chunks:'`, `'AES-256-CBC decrypt failed'`. | **CONFIRMED** |
-| **Endpoint Refusal** | Requesting `https://vss.pandauth.com/kv/c96fbaae7252d36e` without credentials returns `-- Access denied` (125 bytes, saved at `.system_generated/steps/528/content.md`). | **CONFIRMED** |
-| **Game Payload Missing from File** | Zero occurrences of TSB combat remotes, damage functions, targeting algorithms, or `ZKSuryuFarm` in all 930 decrypted strings and prototype instructions across both VMs. | **CONFIRMED** |
+An exhaustive extraction and semantic audit across all 4 stages was conducted (persisted in `scratch/coverage_summary.txt`).
 
----
+### 3.1 Coverage Statistics Summary
 
-## 4. Function-by-Function Audit of `reconstructed_farm.lua`
+| Stage Name | Prototype Count | Instruction Count | Root Proto | Instructions Extracted | Opcode Handlers Mapped | Decompilation Status | Unresolved Opcodes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **VM1 Stage 1** | 57 | 10,641 | Proto 37 | 10,641 / 10,641 (100%) | 10,641 / 10,641 (100%) | Key routines decompiled (Proto 48, 38, 28, 1) | **0** |
+| **VM1 Stage 2** | 2 | 166 | Proto 2 | 166 / 166 (100%) | 166 / 166 (100%) | Fully Decompiled (Proto 2, 165 instrs) | **0** |
+| **VM2 Stage 1** | 56 | 11,150 | Proto 33 | 11,150 / 11,150 (100%) | 11,150 / 11,150 (100%) | Opcode Traced (VM dispatch, AES-256-CBC) | **0** |
+| **VM2 Stage 2** | 254 | 51,134 | Proto 162 | 51,134 / 51,134 (100%) | 51,134 / 51,134 (100%) | Key routines decompiled (Proto 162, 198, 101) | **0** |
+| **TOTAL** | **369** | **73,091** | — | **73,091 / 73,091 (100%)** | **73,091 / 73,091 (100%)** | **Core loader & security logic decompiled** | **0** |
 
-Every component of `reconstructed_farm.lua` has been evaluated against direct evidence from `downloaded_script.lua`:
-
-| Component / Function | Original Evidence | Classification | Audit Rationale |
-| :--- | :--- | :--- | :--- |
-| **`Config.Enabled`** | None | **INVENTED** | Standard boilerplate execution toggle. |
-| **`Config.DoServerHop`** | Contextual launcher snippet `getgenv().DoServerHop = true` | **INFERRED** | Documented in launcher context, but no reference to `DoServerHop` exists inside `downloaded_script.lua`. |
-| **`Config.Targeting`** | None | **INVENTED** | `MaxTargetDistance = 1500`, `PrioritizeLowestHealth = true`, `IgnoreForceField = true`, `Whitelist` are speculative defaults. |
-| **`Config.Combat`** | None | **INVENTED** | `FollowDistance = 3.5`, `AttackInterval = 0.25`, `MaxEngageDuration = 12.0` were authored from scratch based on generic autofarm heuristics. |
-| **`Config.Safety`** | None | **INVENTED** | `MinSelfHealthPercent = 15` and `RespawnDelay = 1.0` have no basis in the local code. |
-| **`Config.ServerHop`** | None | **INVENTED** | `TargetSearchTimeout = 10.0` and `HopCooldown = 15.0` are invented timing heuristics. |
-| **`GetLocalCharacter()`** | None | **INVENTED** | Standard Luau pattern querying `LocalPlayer.Character`, `Humanoid`, and `HumanoidRootPart`. |
-| **`IsPlayerAlive()`** | None | **INVENTED** | Standard check for `Humanoid.Health > 0`. |
-| **`HasForceField()`** | None | **INVENTED** | Speculative spawn-protection filter (`FindFirstChildOfClass("ForceField")`). |
-| **`IsRagdolled()`** | None | **INVENTED** | Speculative TSB physics state filter (`"Ragdoll"` value or `HumanoidStateType.Physics`). |
-| **`FindBestTarget()`** | None | **INVENTED** | Target acquisition algorithm iterating `Players:GetPlayers()` with distance/health sorting. No targeting logic exists in the local file. |
-| **`TriggerAttack()`** | None | **INVENTED** | Left mouse button click emulation via `VirtualUser:Button1Down/Up`. No attack calls or remotes were recovered. |
-| **`PositionBehindTarget()`** | None | **INVENTED** | CFrame calculation positioning local character `-targetCFrame.LookVector * FollowDistance`. |
-| **`ExecuteServerHop()`** | None | **INVENTED** | Clean-room query to public Roblox API `https://games.roblox.com/v1/games/%d/servers/Public` and `TeleportToPlaceInstance`. |
-| **`OnHeartbeat()`** | None | **INVENTED** | Main loop bound to `RunService.Heartbeat`. |
-| **`Initialize()` / Cleanup** | None | **INVENTED** | Connection tracking, `CharacterAdded` listener, and `ZKSuryuFarmRunning` watchdog loop. |
+### 3.2 Call Graph Analysis from Root Prototypes
+1. **VM1 Stage 1 (`Proto 37`)**:
+   - `Proto 37` (Root, 309 instrs) -> calls `Proto 48` (Main telemetry driver, 5,354 instrs).
+   - `Proto 48` creates closures for `Proto 1` (call-stack recursion depth probe), `Proto 28` (LCG string decryptor), and `Proto 38` (64-bit FNV-1a hash generator over `c[85]`).
+2. **VM1 Stage 2 (`Proto 2`)**:
+   - `Proto 2` (Root, 165 instrs) -> calls `Proto 1` via `pcall` to verify runtime environment and HTTP spy state. Throws `ENV_REJECTED` or kicks on spy detection.
+3. **VM2 Stage 1 (`Proto 33`)**:
+   - `Proto 33` (Root, 331 instrs) -> initializes VM register environment, imports Luau standard libraries (`bit32`, `buffer`, `table`), and sets up AES-256-CBC crypto tables.
+4. **VM2 Stage 2 (`Proto 162`)**:
+   - `Proto 162` (Root, 3,551 instrs):
+     - Dispatches WebSocket connection and heartbeat tasks.
+     - Spawns GUI generation routines for Panda Kryptic authentication UI.
+     - Calls `Proto 101` (AES-256-CBC decryption routine) upon payload assembly.
+     - Exposes global `InitScript` delegating to `Proto 198` (Secondary script downloader).
+     - Directly calls compiled payload chunk at Instruction 3394.
 
 ---
 
-## 5. Distinction Between Loader Logic & Application Payload
+## 4. Execution Transition & Remote Payload Boundary
 
-### 5.1 What Was Actually Recovered (The Loader)
-The entire client architecture of **Panda Kryptic v1.4.0** was recovered and decompiled into `recovered_pseudocode.lua`:
-1. **Pre-flight Environment Validation**:
-   - VM1 executes call-stack recursion and `Path2D` geometry checks.
-   - Detects HTTP spies and debugging hooks, terminating with `error("[Kryptic] HTTP Spy Detected. Please Restart Roblox")`.
-2. **Panda Key Watcher**:
-   - Plaintext background task polling `https://api.pandauth.com/api/v1/public/getkey/pypublicfarm/status` every 600 seconds.
-3. **PandaAuth License Validation & UI**:
-   - Verifies HWID and key against Pandauth endpoints (`/keyx`, `/auth`, `/hello`).
-   - Generates a loading interface inside `CoreGui`/`gethui` using `ScreenGui`, `UICorner`, `UIStroke`, and `TweenService`.
-4. **Encrypted Network Delivery**:
-   - Establishes a WebSocket (`wss://`) session with fallback to HTTP long-polling (`/http$`).
-   - Receives encrypted payload chunks (`main_meta`, `main_chunk`).
-   - Decrypts the reassembled stream in memory using AES-256-CBC.
-   - Executes the payload via `loadstring()`.
+By tracing instructions in **VM2 Stage 2, `Proto 162`**, the exact boundary where control flow leaves the local loader was pinpointed:
 
-### 5.2 What Remains Unavailable (The Application Payload)
-- The actual game payload (`ZKSuryuFarm`) is **completely absent from the local file**.
-- When queried without authentication, `https://vss.pandauth.com/kv/c96fbaae7252d36e` returns `-- Access denied`.
-- Because server-side access controls and authentication cannot be bypassed under ethical guidelines, the exact original source code, remote event names, attack combos, and server-hopping triggers of `ZKSuryuFarm` remain unresolved.
+```
+[Proto 162: Inst 645]   -> Status: "Stage: main_request"
+[Proto 162: Inst 2857]  -> Dispatches "main_request" over WebSocket / HTTP tunnel
+[Proto 162: Inst 1126]  -> Receives "main_meta" packet
+[Proto 162: Inst 225]   -> Reads "chunk_total"
+[Proto 162: Inst 227]   -> Logs "main_meta — chunks: %d"
+[Proto 162: Inst 3227]  -> Iterates "chunk_index"
+[Proto 162: Inst 3232]  -> Buffers each "main_chunk" packet
+[Proto 162: Inst 350]   -> Concatenates chunks and logs "main script assembled (%d bytes)"
+[Proto 162 -> Proto 101]-> Decrypts assembled payload using AES-256-CBC (Inst 153 throws on failure)
+[Proto 162: Inst 1087]  -> Audits payload length (throws "[Kryptic] empty main script" if 0 bytes)
+[Proto 162: Inst 3390]  -> Sets status "Executing main script"
+[Proto 162: Inst 853]   -> Compiles decrypted string via loadstring: loadstring(decrypted_payload)
+[Proto 162: Inst 3392]  -> Wraps compilation in pcall (Inst 2035 logs "main error:" on syntax error)
+[Proto 162: Inst 3394]  -> *** TRANSITION POINT *** Calls compiled function chunk: res()
+```
 
----
-
-## 6. List of Unresolved Questions & Limitations
-
-1. **Undocumented Game Remotes**: Does the original `ZKSuryuFarm` use direct mouse clicks (`VirtualUser`) or does it fire specific TSB character combat `RemoteEvent` / `RemoteFunction` objects? (Unresolved: payload is server-gated).
-2. **Movement Methodology**: Did the original script position players via CFrame interpolation, LinearVelocity, BodyVelocity, or pathfinding? (Unresolved).
-3. **Server Hop Triggers**: Under what exact conditions did the original script trigger server hopping? (Only contextual clue is `getgenv().DoServerHop = true`).
-4. **Luraph Minor Revision**: Is the compiler build specifically v14.4, v14.5, or a proprietary fork? (Unresolved: no internal patch-level tag exists).
+### Absence of Application Payload:
+- `downloaded_script.lua` and its extracted buffers contain **zero application payload bytes**.
+- Requesting `https://vss.pandauth.com/kv/c96fbaae7252d36e` returns `-- Access denied` (125 bytes, saved at `.system_generated/steps/528/content.md`).
+- Missing input preventing further deobfuscation of the application payload: **Valid Pandauth authentication token / license key for KV slug `c96fbaae7252d36e`**. Under prompt constraints, no bypass of authentication or licensing controls was attempted.
 
 ---
 
-## 7. Audit Conclusion
+## 5. Summary of Deliverables
 
-- **Bytecode & Deobfuscation Analysis**: **100% COMPLETE & VERIFIED**. Both VM1 and VM2 Stage 2 have been completely decrypted, deserialized, and mapped to the byte.
-- **Loader Identification**: **CONFIRMED** as Panda Kryptic Loader v1.4.0 (`kryptic-pusl` / `PandaAuthV4`).
-- **Application Logic Recovery**: **UNAVAILABLE LOCALLY**. The game farming payload was withheld by the remote Pandauth server behind key authentication.
-- **`reconstructed_farm.lua` Classification**: **PROVISIONAL SPECULATIVE IMPLEMENTATION**. It provides an operational clean-room baseline for automated kill farming and server hopping, but must not be represented as the recovered original source code.
+1. [**`recovered_pseudocode.lua`**](file:///c:/Users/muhammed%20k%C4%B1l%C4%B1%C3%A7/Documents/antigravity/clever-davinci/recovered_pseudocode.lua): Contains all genuine recovered Luau source code for unvirtualized helpers (`EnvCheck`, `HookCheck`, `DetectHttpSpy`, `StartHeartbeat`, `SHA256`), Block 2 (`Panda Key Watcher`), Block 3 (Configuration), and the exact decompiled transition logic of `Proto 162` and `Proto 198`.
+2. [**`analysis_notes.md`**](file:///c:/Users/muhammed%20k%C4%B1l%C4%B1%C3%A7/Documents/antigravity/clever-davinci/analysis_notes.md): Technical reference containing the prototype coverage table, call graph reachability, coordinate system reconciliations, and cryptographic derivations ($key_1, key_2$, LCG parameters).
+3. [**`reverse_engineering_report.md`**](file:///c:/Users/muhammed%20k%C4%B1l%C4%B1%C3%A7/Documents/antigravity/clever-davinci/reverse_engineering_report.md): Formal audit report detailing exact completion metrics, claim-by-claim citations, and the remote payload boundary.
+4. [`downloaded_script.lua`](file:///c:/Users/muhammed%20k%C4%B1l%C4%B1%C3%A7/Documents/antigravity/clever-davinci/downloaded_script.lua): Preserved completely unchanged.
